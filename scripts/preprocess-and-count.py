@@ -14,7 +14,10 @@ INPUT_FOLDER = '/gpfs01/berens/data/data/pubmed_processed/'
 def load_data(start_year=2010):
     print('Loading data...', flush=True)
 
-    df = pd.read_csv(INPUT_FOLDER + "pubmed_baseline_2025.zip")
+    df = pd.read_parquet(
+        INPUT_FOLDER + "pubmed_baseline_2025.parquet.gzip",
+        engine="pyarrow",
+    )
     print(f'Found {len(df)} papers.', flush=True)  # 24814136
     
     df = df[(df.Year >= start_year) & (df.Year <= 2024)]
