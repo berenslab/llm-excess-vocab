@@ -7,7 +7,7 @@ from pathlib import Path
 import time
 import os
 
-from process_pubmed_utils import fix_all_seeds, generate_embeddings_batches
+from embeddings_pubmed_utils import fix_all_seeds, generate_embeddings_batches
 
 # define paths
 variables_path = Path("../results/variables")
