@@ -19,6 +19,9 @@ How to cite:
 
 Preprint version: https://arxiv.org/abs/2406.07016.
 
+<p style="text-align:center"><img src="figures/examples.png" alt="Example excess words" width="400px"></p>
+
+
 ## Materials
 
 * All 900 excess words that we identified from 2013 to 2024 are listed in `results/excess_words.csv` together with our annotations.
