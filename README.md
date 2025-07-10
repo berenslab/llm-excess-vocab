@@ -19,7 +19,7 @@ How to cite:
 
 Preprint version: https://arxiv.org/abs/2406.07016.
 
-<p style="text-align:center"><img src="figures/examples.png" alt="Example excess words" width="400px"></p>
+<p align="center"><img src="figures/examples.png" alt="Example excess words" width="400px"></p>
 
 
 ## Materials
