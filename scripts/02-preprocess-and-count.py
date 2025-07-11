@@ -7,24 +7,33 @@ import pickle
 from sklearn.feature_extraction.text import CountVectorizer
 
 # RESULTS_FOLDER = '../results/'
-RESULTS_FOLDER = ''
+RESULTS_FOLDER = ""
 
-INPUT_FOLDER = '/gpfs01/berens/data/data/pubmed_processed/'
+INPUT_FOLDER = "/gpfs01/berens/data/data/pubmed_processed/"
+
 
 def load_data(start_year=2010):
-    print('Loading data...', flush=True)
+    print("Loading data...", flush=True)
 
-    df = pd.read_parquet(
+    df1 = pd.read_parquet(
         INPUT_FOLDER + "pubmed_baseline_2025.parquet.gzip",
         engine="pyarrow",
     )
-    print(f'Found {len(df)} papers.', flush=True)  # 24814136
-    
-    df = df[(df.Year >= start_year) & (df.Year <= 2024)]
-    print(f'Kept {len(df)} papers from {start_year}--2024.', flush=True)  # 15103887
-    
+    df2 = pd.read_parquet(
+        INPUT_FOLDER + "pubmed_daily_updates_2025_v1.parquet.gzip",
+        engine="pyarrow",
+    )
+
+    df = pd.concat((df1, df2))
+    df = df.groupby(["PMID"]).last()
+
+    print(f"Found {len(df)} papers.", flush=True)
+
+    df = df[(df.Year >= start_year) & (df.Year <= 2025)]
+    print(f"Kept {len(df)} papers from {start_year}--2025.", flush=True)  # 15103887
+
     return df
-    
+
     # OBSOLETE: Needed for merging PubMed daily updates
     # df1 = pd.read_csv(INPUT_FOLDER + "pubmed_landscape_data_2024_v2.zip")
     # df1_abstracts = pd.read_csv(INPUT_FOLDER + "pubmed_landscape_abstracts_2024.zip")
@@ -55,8 +64,8 @@ def cleanup_abstracts_inplace(df):
     df.loc[ind, "AbstractText"] = ""
 
     print(
-        f"Removing {np.sum(ind)} abstracts (corrections/errata/retractions/etc).\n", 
-        flush=True
+        f"Removing {np.sum(ind)} abstracts (corrections/errata/retractions/etc).\n",
+        flush=True,
     )  # 3514
 
     # Abstracts filter
@@ -344,8 +353,8 @@ def cleanup_abstracts_inplace(df):
             s = [ss[:75] for ss in s.ravel() if type(ss) == str]
             if len(s) > 0:
                 print(
-                    f"   Found {len(s)} abstract(s) with string(s) to replace:", 
-                    flush=True
+                    f"   Found {len(s)} abstract(s) with string(s) to replace:",
+                    flush=True,
                 )
                 print("      " + "\n      ".join(s[:5]) + "\n", flush=True)
             else:
@@ -354,7 +363,9 @@ def cleanup_abstracts_inplace(df):
                 replace_string, to_replace[search_string][replace_string], regex=True
             )
 
-    print(f"In total {np.sum(all_affected_abstracts)} were edited.", flush=True)  # 270189
+    print(
+        f"In total {np.sum(all_affected_abstracts)} were edited.", flush=True
+    )  # 270189
 
 
 def vectorize_abstracts(df):
@@ -382,35 +393,36 @@ def vectorize_abstracts(df):
     df.to_csv(RESULTS_FOLDER + "yearly-counts.csv.gz", index=False)
 
     return X, words, years, counts, totals
-    
+
 
 def compute_excess(targetYear, cutoff=1e-4):
-    alphabet = 'abcdefghijklmnopqrstuvwxyz'
-    allowedWords =  np.array([np.all([s in alphabet for s in w]) for w in words])
+    alphabet = "abcdefghijklmnopqrstuvwxyz"
+    allowedWords = np.array([np.all([s in alphabet for s in w]) for w in words])
     allowedWords &= np.array([len(w) >= 4 for w in words])
-    
+
     freqs = (counts + 1) / (totals + 1)
 
-    subsetWords = allowedWords & (
-        freqs[:, years == targetYear].ravel() >= cutoff
-    ) & (
-        freqs[:, years == targetYear - 1].ravel() >= cutoff
+    subsetWords = (
+        allowedWords
+        & (freqs[:, years == targetYear].ravel() >= cutoff)
+        & (freqs[:, years == targetYear - 1].ravel() >= cutoff)
     )
 
     projection = freqs[subsetWords, years == targetYear - 2] + np.maximum(
         (
-            freqs[subsetWords, years == targetYear - 2] - 
-            freqs[subsetWords, years == targetYear - 3]
-        ) * 2,
-        0
+            freqs[subsetWords, years == targetYear - 2]
+            - freqs[subsetWords, years == targetYear - 3]
+        )
+        * 2,
+        0,
     )
-    
+
     ratios = freqs[subsetWords, years == targetYear] / projection
-    diffs  = freqs[subsetWords, years == targetYear] - projection
+    diffs = freqs[subsetWords, years == targetYear] - projection
     current_freqs = freqs[subsetWords][:, years == targetYear].ravel()
-    
+
     return subsetWords, ratios, diffs, current_freqs
-    
+
 
 def compute_excess_gaps():
     subsetWords, ratios, diffs, x = compute_excess(2024)
@@ -418,51 +430,69 @@ def compute_excess_gaps():
     ind = np.log10(ratios) > np.log10(2) - (np.log10(x) + 4) * (np.log10(2) / 4)
     ind |= diffs > 0.01
 
-    annotations = pd.read_csv(RESULTS_FOLDER + 'excess_words.csv')
+    annotations = pd.read_csv(RESULTS_FOLDER + "excess_words.csv")
     word2type = dict(zip(annotations.word, annotations.type))
 
-    chatgpt_words =   np.array(
-        [w         for i, w in enumerate(words[subsetWords][ind]) if word2type[w] == 'style']
+    chatgpt_words = np.array(
+        [w for i, w in enumerate(words[subsetWords][ind]) if word2type[w] == "style"]
     )
     chatgpt_words_f = np.array(
-        [x[ind][i] for i, w in enumerate(words[subsetWords][ind]) if word2type[w] == 'style']
+        [
+            x[ind][i]
+            for i, w in enumerate(words[subsetWords][ind])
+            if word2type[w] == "style"
+        ]
     )
 
     cutoffs = [0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5]
     cutoff_counts = np.zeros((len(cutoffs), years.size))
-    
+
     for i, cutoff in enumerate(cutoffs):
-        print('.', end='', flush=True)
+        print(".", end="", flush=True)
         ind_words = np.isin(words, chatgpt_words[chatgpt_words_f < cutoff])
         for j, year in enumerate(years):
             ind = df.Year == year
             cutoff_counts[i, j] = np.sum(np.sum(X[ind, :][:, ind_words], axis=1) > 0)
-    print('', flush=True)
-    
-    np.save(RESULTS_FOLDER + 'yearly-counts-cutoff.npy', cutoff_counts)
-    
+    print("", flush=True)
 
-def compute_excess_gaps_subgroups(rare_threshold=0.01, output_filename="yearly-counts-subgroups.csv"):
+    np.save(RESULTS_FOLDER + "yearly-counts-cutoff.npy", cutoff_counts)
+
+
+def compute_excess_gaps_subgroups(
+    rare_threshold=0.01, output_filename="yearly-counts-subgroups.csv"
+):
     subsetWords, ratios, diffs, x = compute_excess(2024)
 
     ind = np.log10(ratios) > np.log10(2) - (np.log10(x) + 4) * (np.log10(2) / 4)
     ind |= diffs > 0.01
 
-    annotations = pd.read_csv(RESULTS_FOLDER + 'excess_words.csv')
+    annotations = pd.read_csv(RESULTS_FOLDER + "excess_words.csv")
     word2type = dict(zip(annotations.word, annotations.type))
 
-    chatgpt_words =   np.array(
-        [w         for i, w in enumerate(words[subsetWords][ind]) if word2type[w] == 'style']
+    chatgpt_words = np.array(
+        [w for i, w in enumerate(words[subsetWords][ind]) if word2type[w] == "style"]
     )
     chatgpt_words_f = np.array(
-        [x[ind][i] for i, w in enumerate(words[subsetWords][ind]) if word2type[w] == 'style']
+        [
+            x[ind][i]
+            for i, w in enumerate(words[subsetWords][ind])
+            if word2type[w] == "style"
+        ]
     )
 
     chatgptwords_rare = chatgpt_words[chatgpt_words_f < rare_threshold]
 
     chatgptwords_common = [
-        'exhibited', 'crucial', 'additionally', 'within', 'notably', 
-        'insights', 'comprehensive', 'across', 'particularly', 'enhancing'
+        "exhibited",
+        "crucial",
+        "additionally",
+        "within",
+        "notably",
+        "insights",
+        "comprehensive",
+        "across",
+        "particularly",
+        "enhancing",
     ]
 
     ind_words_common = np.isin(words, chatgptwords_common)
@@ -483,120 +513,153 @@ def compute_excess_gaps_subgroups(rare_threshold=0.01, output_filename="yearly-c
         else:
             save_label = label
         print(
-            f'{labeltype},{save_label},' + ','.join(group_counts.ravel().astype(str)),
-            file=f, 
-            flush=True
+            f"{labeltype},{save_label}," + ",".join(group_counts.ravel().astype(str)),
+            file=f,
+            flush=True,
         )
         print(
-            f'{labeltype},{save_label},' + ','.join(group_counts.ravel().astype(str)),
-            flush=True
+            f"{labeltype},{save_label}," + ",".join(group_counts.ravel().astype(str)),
+            flush=True,
         )
 
-    with open(RESULTS_FOLDER + output_filename, 'w') as f:
+    with open(RESULTS_FOLDER + output_filename, "w") as f:
         print(
-            'grouptype,group,2010_common,2011_common,2012_common,2013_common,'
-            '2014_common,2015_common,2016_common,2017_common,2018_common,'
-            '2019_common,2020_common,2021_common,2022_common,2023_common,'
-            '2024_common,2010_rare,2011_rare,2012_rare,2013_rare,2014_rare,'
-            '2015_rare,2016_rare,2017_rare,2018_rare,2019_rare,2020_rare,'
-            '2021_rare,2022_rare,2023_rare,2024_rare,2010_total,2011_total,'
-            '2012_total,2013_total,2014_total,2015_total,2016_total,2017_total,'
-            '2018_total,2019_total,2020_total,2021_total,2022_total,2023_total,'
-            '2024_total',
+            "grouptype,group,2010_common,2011_common,2012_common,2013_common,"
+            "2014_common,2015_common,2016_common,2017_common,2018_common,"
+            "2019_common,2020_common,2021_common,2022_common,2023_common,"
+            "2024_common,2010_rare,2011_rare,2012_rare,2013_rare,2014_rare,"
+            "2015_rare,2016_rare,2017_rare,2018_rare,2019_rare,2020_rare,"
+            "2021_rare,2022_rare,2023_rare,2024_rare,2010_total,2011_total,"
+            "2012_total,2013_total,2014_total,2015_total,2016_total,2017_total,"
+            "2018_total,2019_total,2020_total,2021_total,2022_total,2023_total,"
+            "2024_total",
             file=f,
-            flush=True
+            flush=True,
         )
 
         ind = np.ones(len(df), dtype=bool)
-        write_to_file(f, 'all', 'all', count(ind))
+        write_to_file(f, "all", "all", count(ind))
 
-        for label in set(np.unique(df.Labels.values)) - set(['unlabeled']):
+        for label in set(np.unique(df.Labels.values)) - set(["unlabeled"]):
             ind = df.Labels == label
-            write_to_file(f, 'class', label, count(ind))
+            write_to_file(f, "class", label, count(ind))
 
         countries, countries_counts = np.unique(df.Countries.values, return_counts=True)
         countries = countries[np.argsort(countries_counts)][::-1]
-        countries = [c for c in countries if c != 'unknown']
+        countries = [c for c in countries if c != "unknown"]
         for country in countries[:50]:
             ind = df.Countries == country
-            write_to_file(f, 'country', country, count(ind))
+            write_to_file(f, "country", country, count(ind))
 
-        for gender in ['male', 'female']:
+        for gender in ["male", "female"]:
             ind = df.InferredGenderFirstAuthor == gender
-            write_to_file(f, 'gender', gender + ' first', count(ind))
+            write_to_file(f, "gender", gender + " first", count(ind))
 
-        for gender in ['male', 'female']:
+        for gender in ["male", "female"]:
             ind = df.InferredGenderLastAuthor == gender
-            write_to_file(f, 'gender', gender + ' last', count(ind))
+            write_to_file(f, "gender", gender + " last", count(ind))
 
-        journals, journals_counts = np.unique(df[df.Year == years[-1]].Journal.values, return_counts=True)
+        journals, journals_counts = np.unique(
+            df[df.Year == years[-1]].Journal.values, return_counts=True
+        )
         journals = journals[np.argsort(journals_counts)][::-1]
         for journal in journals[:100]:
             ind = df.Journal == journal
-            write_to_file(f, 'journal', journal, count(ind))
+            write_to_file(f, "journal", journal, count(ind))
 
-        ind = df.Journal.isin(['Nature', 'Science', 'Cell'])
-        write_to_file(f, 'journals', 'Nature+Science+Cell', count(ind))
+        ind = df.Journal.isin(["Nature", "Science", "Cell"])
+        write_to_file(f, "journals", "Nature+Science+Cell", count(ind))
 
         # Established 2018 or earlier
         nature_journals = [
-            'Nature aging', 'Nature astronomy', 'Nature biomedical engineering',
-            'Nature biotechnology', 'Nature cardiovascular research', 'Nature catalysis',
-            'Nature cell biology', 'Nature chemical biology', 'Nature chemistry',
-            'Nature climate change', 'Nature communications', 'Nature computational science',
-            'Nature digest', 'Nature ecology & evolution', 'Nature electronics',
-            'Nature energy', 'Nature genetics', 'Nature geoscience', 'Nature human behaviour',
-            'Nature immunology', 'Nature materials', 'Nature medicine', 'Nature methods',
-            'Nature microbiology', 'Nature nanotechnology', 'Nature neuroscience',
-            'Nature photonics', 'Nature physics', 'Nature plants', 
-            'Nature structural & molecular biology', 'Nature sustainability'
+            "Nature aging",
+            "Nature astronomy",
+            "Nature biomedical engineering",
+            "Nature biotechnology",
+            "Nature cardiovascular research",
+            "Nature catalysis",
+            "Nature cell biology",
+            "Nature chemical biology",
+            "Nature chemistry",
+            "Nature climate change",
+            "Nature communications",
+            "Nature computational science",
+            "Nature digest",
+            "Nature ecology & evolution",
+            "Nature electronics",
+            "Nature energy",
+            "Nature genetics",
+            "Nature geoscience",
+            "Nature human behaviour",
+            "Nature immunology",
+            "Nature materials",
+            "Nature medicine",
+            "Nature methods",
+            "Nature microbiology",
+            "Nature nanotechnology",
+            "Nature neuroscience",
+            "Nature photonics",
+            "Nature physics",
+            "Nature plants",
+            "Nature structural & molecular biology",
+            "Nature sustainability",
         ]
 
         ind = df.Journal.isin(nature_journals)
-        write_to_file(f, 'journals', 'Nature family', count(ind))
+        write_to_file(f, "journals", "Nature family", count(ind))
 
-        ind = df.Journal.str.contains('Frontiers')
-        write_to_file(f, 'journals', 'Frontiers', count(ind))
+        ind = df.Journal.str.contains("Frontiers")
+        write_to_file(f, "journals", "Frontiers", count(ind))
 
-        ind = df.Journal.str.contains('Basel')
-        write_to_file(f, 'journals', 'MDPI', count(ind))
+        ind = df.Journal.str.contains("Basel")
+        write_to_file(f, "journals", "MDPI", count(ind))
 
         tadpole_journals = [
-            'BioFactors (Oxford, England)',
-            'Journal of cellular biochemistry',
-            'Biomedicine & pharmacotherapy = Biomedecine & pharmacotherapie',
-            'International immunopharmacology',
-            'Experimental and molecular pathology',
-            'Artificial cells, nanomedicine, and biotechnology',
-            'Cellular physiology and biochemistry : international journal of experimental cellular physiology, biochemistry, and pharmacology',
-            'International journal of immunopathology and pharmacology',
-            'Brazilian journal of medical and biological research = Revista brasileira de pesquisas medicas e biologicas',
-            'Die Pharmazie',
-            'European review for medical and pharmacological sciences',
-            'International journal of clinical and experimental pathology',
-            'Neoplasma',
+            "BioFactors (Oxford, England)",
+            "Journal of cellular biochemistry",
+            "Biomedicine & pharmacotherapy = Biomedecine & pharmacotherapie",
+            "International immunopharmacology",
+            "Experimental and molecular pathology",
+            "Artificial cells, nanomedicine, and biotechnology",
+            "Cellular physiology and biochemistry : international journal of experimental cellular physiology, biochemistry, and pharmacology",
+            "International journal of immunopathology and pharmacology",
+            "Brazilian journal of medical and biological research = Revista brasileira de pesquisas medicas e biologicas",
+            "Die Pharmazie",
+            "European review for medical and pharmacological sciences",
+            "International journal of clinical and experimental pathology",
+            "Neoplasma",
         ]
 
         ind = df.Journal.isin(tadpole_journals)
-        write_to_file(f, 'journals', 'Tadpole journals', count(ind))
+        write_to_file(f, "journals", "Tadpole journals", count(ind))
 
-        ind = df.Title.str.contains('review') | df.Title.str.contains('Review')
-        write_to_file(f, 'titles', 'Reviews', count(ind))
+        ind = df.Title.str.contains("review") | df.Title.str.contains("Review")
+        write_to_file(f, "titles", "Reviews", count(ind))
 
-        for country in ['China', 'South Korea', 'Taiwan', 'Iran']:
-            for label in ['computation', 'bioinformatics', 'material', 'healthcare', 'environment']:
+        for country in ["China", "South Korea", "Taiwan", "Iran"]:
+            for label in [
+                "computation",
+                "bioinformatics",
+                "material",
+                "healthcare",
+                "environment",
+            ]:
                 ind = (df.Countries == country) & (df.Labels == label)
-                write_to_file(f, 'country/class', country + ' & ' + label, count(ind))
+                write_to_file(f, "country/class", country + " & " + label, count(ind))
 
-        for country in ['China', 'South Korea', 'Taiwan', 'Iran']:
-            for journal in ['Cureus', 'Sensors (Basel, Switzerland)']:
+        for country in ["China", "South Korea", "Taiwan", "Iran"]:
+            for journal in ["Cureus", "Sensors (Basel, Switzerland)"]:
                 ind = (df.Countries == country) & (df.Journal == journal)
-                write_to_file(f, 'country/journal', country + ' & ' + journal, count(ind))
+                write_to_file(
+                    f, "country/journal", country + " & " + journal, count(ind)
+                )
 
-        for country in ['China', 'South Korea', 'Taiwan', 'Iran']:
-            for journal in ['Frontiers', 'Basel']:
+        for country in ["China", "South Korea", "Taiwan", "Iran"]:
+            for journal in ["Frontiers", "Basel"]:
                 ind = (df.Countries == country) & df.Journal.str.contains(journal)
-                write_to_file(f, 'country/journals', country + ' & ' + journal, count(ind))
+                write_to_file(
+                    f, "country/journals", country + " & " + journal, count(ind)
+                )
 
 
 ##########################################################################
@@ -625,7 +688,7 @@ compute_excess_gaps_subgroups(0.02, "yearly-counts-subgroups.csv")
 # import pandas as pd
 # import numpy as np
 # import pickle
-    
+
 # df = pd.read_csv("yearly-counts.csv.gz")
 # words = df.word.values[:-1].astype(str)
 # years = df.columns[1:].astype(int)
@@ -641,9 +704,9 @@ covid_words = ["covid", "pandemic", "coronavirus", "sars"]
 ind_covid_words = np.isin(words, covid_words)
 group_counts = np.zeros((2, years.size), dtype=int)
 for i, year in enumerate(years):
-     ind = df.Year == year
-     group_counts[0, i] = np.sum(np.sum(X[ind, :][:, ind_covid_words], axis=1) > 0)
-     group_counts[1, i] = np.sum(ind)
+    ind = df.Year == year
+    group_counts[0, i] = np.sum(np.sum(X[ind, :][:, ind_covid_words], axis=1) > 0)
+    group_counts[1, i] = np.sum(ind)
 print(group_counts)
 f = (group_counts[0].astype(float) + 1) / (group_counts[1] + 1)
 print(f * 100)

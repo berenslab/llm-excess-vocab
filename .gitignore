@@ -2,6 +2,7 @@
 data
 results/variables
 figures/tmp
+scripts/how_to_sync.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
