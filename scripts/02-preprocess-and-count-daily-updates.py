@@ -6,12 +6,13 @@ import numpy as np
 import pickle
 from preprocess_and_count_utils import *
 
+
 # RESULTS_FOLDER = '../results/'
 RESULTS_FOLDER = ""
 
 INPUT_FOLDER = "/gpfs01/berens/data/data/pubmed_processed/"
 
-df = load_data()
+df = load_data(start_year=2010, end_year=2025)
 
 cleanup_abstracts_inplace(df)
 
@@ -28,6 +29,7 @@ X, words, years, counts, totals = vectorize_abstracts(df)
 compute_excess_gaps()
 
 compute_excess_gaps_subgroups(0.02, "yearly-counts-subgroups.csv")
+
 
 ## Below is a stand-along script to analyze the Covid frequency gap
 
