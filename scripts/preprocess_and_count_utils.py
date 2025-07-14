@@ -4,6 +4,7 @@
 import pandas as pd
 import numpy as np
 import pickle
+import scipy as sp
 from sklearn.feature_extraction.text import CountVectorizer
 
 # RESULTS_FOLDER = '../results/'
@@ -359,16 +360,14 @@ def cleanup_abstracts_inplace(df):
 
 
 def vectorize_abstracts(
-    df,
-    pickle_filename="counts.pkl",
-    csv_filename="yearly-counts.csv.gz"
+    df, counts_filename="counts.pkl", csv_filename="yearly-counts.csv.gz"
 ):
     vectorizer = CountVectorizer(binary=True, min_df=1e-6)
     X = vectorizer.fit_transform(df.AbstractText.values)  # ~30 min
 
     print(f"Count matrix computed: {X.shape}", flush=True)  # 15103888 x 362441
 
-    pickle.dump(X, open(RESULTS_FOLDER + pickle_filename, "wb"))
+    sp.sparse.save_npz(RESULTS_FOLDER + counts_filename, X)
 
     words = vectorizer.get_feature_names_out()
     years = np.arange(2010, 2025)
@@ -376,7 +375,7 @@ def vectorize_abstracts(
     totals = np.zeros(years.size)
 
     for i, year in enumerate(years):
-        ind = df.Year == year
+        ind = df.Year.values == year
         counts[:, i] = np.array(np.sum(X[ind, :], axis=0)).ravel()
         totals[i] = np.sum(ind)
 
