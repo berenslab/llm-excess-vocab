@@ -38,20 +38,6 @@ def load_data(start_year=2010, end_year=2024):
 
     return df
 
-    # OBSOLETE: Needed for merging PubMed daily updates
-    # df1 = pd.read_csv(INPUT_FOLDER + "pubmed_landscape_data_2024_v2.zip")
-    # df1_abstracts = pd.read_csv(INPUT_FOLDER + "pubmed_landscape_abstracts_2024.zip")
-    # df2 = pd.read_csv(INPUT_FOLDER + "pubmed_daily_updates_2024_v2.zip")
-
-    # print('Assembling the dataframe...', flush=True)
-
-    # df1["AbstractText"] = df1_abstracts["AbstractText"]
-
-    # df1.drop(columns=np.setdiff1d(df1.columns, df2.columns), inplace=True)
-
-    # df = pd.concat((df1, df2))
-    # df = df.groupby(["PMID"]).last()
-
 
 def cleanup_abstracts_inplace(df):
     # Titles filter
@@ -372,13 +358,17 @@ def cleanup_abstracts_inplace(df):
     )  # 270189
 
 
-def vectorize_abstracts(df):
+def vectorize_abstracts(
+    df,
+    pickle_filename="counts.pkl",
+    csv_filename="yearly-counts.csv.gz"
+):
     vectorizer = CountVectorizer(binary=True, min_df=1e-6)
     X = vectorizer.fit_transform(df.AbstractText.values)  # ~30 min
 
-    print(f"Count matrix computed: {X.shape}", flush=True)  # 14448711 x 4179571
+    print(f"Count matrix computed: {X.shape}", flush=True)  # 15103888 x 362441
 
-    pickle.dump(X, open(RESULTS_FOLDER + "counts.pkl", "wb"))
+    pickle.dump(X, open(RESULTS_FOLDER + pickle_filename, "wb"))
 
     words = vectorizer.get_feature_names_out()
     years = np.arange(2010, 2025)
@@ -394,7 +384,7 @@ def vectorize_abstracts(df):
         dict(zip(["word"] + list(years), [words] + list(counts.astype(int).T)))
     )
     df.loc[len(df)] = [""] + list(totals.astype(int))
-    df.to_csv(RESULTS_FOLDER + "yearly-counts.csv.gz", index=False)
+    df.to_csv(RESULTS_FOLDER + csv_filename, index=False)
 
     return X, words, years, counts, totals
 
@@ -463,7 +453,7 @@ def compute_excess_gaps():
 
 
 def compute_excess_gaps_subgroups(
-    rare_threshold=0.01, output_filename="yearly-counts-subgroups.csv"
+    rare_threshold=0.02, output_filename="yearly-counts-subgroups.csv"
 ):
     subsetWords, ratios, diffs, x = compute_excess(2024)
 
