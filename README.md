@@ -23,7 +23,7 @@ Preprint version: https://arxiv.org/abs/2406.07016.
 
 ## Update: July 2025
 
-Updated analysis in July 2025, using six more months of PubMed data compared to the published paper and compute monthly (rather than yearly) excess values:
+Updated analysis using six more months of PubMed data compared to our published paper and computing monthly (rather than yearly) excess values:
 
 <p align="center"><img src="figures/post-publication-updates/delving_2025_july.png" alt="Excess words in July 2025" width="500px"></p>
 
