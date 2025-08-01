@@ -37,8 +37,11 @@ Updated analysis using six more months of PubMed data compared to our published 
 
 1. All excess frequency analysis and all figures shown in the paper (and provided in the `figures/` folder) are produced by the `scripts/03-figures.ipynb` Python notebook (apart from Figure 7, which is produced by `scripts/08-figure-tsne.ipynb`). This notebook takes as input the `results/yearly-counts.csv.gz` file with yearly counts of each word and several other files with yearly counts of word groups (`yearly-counts*`). The notebook only takes a minute to run.
 2. These yearly word count files are produced by the `scripts/02-preprocess-and-count.py` script which takes a few hours to run and needs a lot of memory. This script takes a dataframe with abstract texts as input, performs abstracts cleaning via regular expressions (~1 hour), then runs 
-   ```
-   vectorizer = sklearn.feature_extraction.text.CountVectorizer(binary=True, min_df=1e-6)
+   ```Python
+   vectorizer = sklearn.feature_extraction.text.CountVectorizer(
+       binary=True,
+       min_df=1e-6
+   )
    vectorizer.fit_transform(df.AbstractText.values)
    ```
    (~0.5 hours), and then does yearly aggregation.
